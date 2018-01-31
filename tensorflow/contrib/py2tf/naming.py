@@ -32,8 +32,10 @@ class Namer(object):
     * side_effect_guards.SymbolNamer
   """
 
-  def __init__(self, global_namespace, name_map=None):
+  def __init__(self, global_namespace, recursive, name_map, partial_types):
     self.global_namespace = global_namespace
+    self.recursive = recursive
+    self.partial_types = partial_types
 
     self.renamed_calls = {}
     if name_map is not None:
@@ -41,24 +43,63 @@ class Namer(object):
 
     self.generated_names = set()
 
-  def compiled_function_name(self, original_name, live_object=None):
-    """See call_trees.FunctionNamer.compiled_function_name."""
-    if live_object is not None and live_object in self.renamed_calls:
-      return self.renamed_calls[live_object]
+  def compiled_class_name(self, original_fqn, live_entity=None):
+    """See call_trees.FunctionNamer.compiled_class_name."""
+    if live_entity is not None and live_entity in self.renamed_calls:
+      return self.renamed_calls[live_entity]
 
-    new_name_root = 'tf__%s' % original_name
+    if isinstance(original_fqn, tuple):
+      original_name = '__'.join(original_fqn)
+    else:
+      original_name = original_fqn
 
+    new_name_root = 'Tf%s' % original_name
     new_name = new_name_root
     n = 0
     while new_name in self.global_namespace:
       n += 1
       new_name = '%s_%d' % (new_name_root, n)
 
-    if live_object is not None:
-      self.renamed_calls[live_object] = new_name
+    if live_entity is not None:
+      self.renamed_calls[live_entity] = new_name
+    self.generated_names.add(new_name)
+    if live_entity is not None:
+      self.renamed_calls[live_entity] = new_name
+    return new_name
+
+  def compiled_function_name(self,
+                             original_fqn,
+                             live_entity=None,
+                             owner_type=None):
+    """See call_trees.FunctionNamer.compiled_function_name."""
+
+    if not self.recursive:
+      return None, False
+
+    if owner_type is not None and owner_type not in self.partial_types:
+      # Members are not renamed when part of an entire converted class.
+      return None, False
+
+    if isinstance(original_fqn, tuple):
+      original_name = '__'.join(original_fqn)
+    else:
+      original_name = original_fqn
+
+    if live_entity is not None and live_entity in self.renamed_calls:
+      return self.renamed_calls[live_entity], True
+
+    new_name_root = 'tf__%s' % original_name
+    new_name = new_name_root
+    n = 0
+    while new_name in self.global_namespace:
+      n += 1
+      new_name = '%s_%d' % (new_name_root, n)
+
+    if live_entity is not None:
+      self.renamed_calls[live_entity] = new_name
     self.generated_names.add(new_name)
 
-    return new_name
+    return new_name, True
 
   def new_symbol(self, name_root, reserved_locals):
     """See control_flow.SymbolNamer.new_symbol."""

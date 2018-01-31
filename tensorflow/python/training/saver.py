@@ -1229,7 +1229,7 @@ class Saver(object):
         The `saver_def` proto should be the one returned by the
         `as_saver_def()` call of the `Saver` that was created for that `Graph`.
       builder: Optional `SaverBuilder` to use if a `saver_def` was not provided.
-        Defaults to `BaseSaverBuilder()`.
+        Defaults to `BulkSaverBuilder()`.
       defer_build: If `True`, defer adding the save and restore ops to the
         `build()` call. In that case `build()` should be called before
         finalizing the graph or using the saver.
@@ -1309,7 +1309,7 @@ class Saver(object):
 
     if not self.saver_def or context.in_eager_mode():
       if self._builder is None:
-        self._builder = BaseSaverBuilder(self._write_version)
+        self._builder = BulkSaverBuilder(self._write_version)
 
       if self._var_list is None:
         # pylint: disable=protected-access
@@ -1592,9 +1592,9 @@ class Saver(object):
         [Stripping Default-Valued Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
 
     Returns:
-      A string: path prefix used for the checkpoint files.  If the saver is
-        sharded, this string ends with: '-?????-of-nnnnn' where 'nnnnn'
-        is the number of shards created.
+      A string: path prefix used for the checkpoint files. If checkpoint
+        format is V1 and the saver is sharded, this string ends with:
+         '-?????-of-nnnnn' where 'nnnnn' is the number of shards created.
       If the saver is empty, returns None.
 
     Raises:
@@ -1744,6 +1744,11 @@ class Saver(object):
       return
     if save_path is None:
       raise ValueError("Can't load save_path when it is None.")
+    if (os.path.isfile(save_path) and
+        self._write_version != saver_pb2.SaverDef.V1):
+      raise ValueError("The specified path: %s is a file."
+                       " Please specify only the path prefix"
+                       " to the checkpoint files." % save_path)
     logging.info("Restoring parameters from %s", save_path)
     if context.in_graph_mode():
       sess.run(self.saver_def.restore_op_name,
